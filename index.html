@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mi Balance</title>
+<style>
+:root{--bg:#f2f6f5;--card:#fff;--ink:#12302c;--mut:#5d7571;--acc:#0f6b5f;--accbg:#e0f0ec;--warn:#c4472d;--line:#d6e2df;color-scheme:light}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1b19;--card:#172826;--ink:#e6f1ee;--mut:#93aeaa;--acc:#4fc4b0;--accbg:#1f3a36;--warn:#f08a70;--line:#294541;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-bottom:84px}
+main{max-width:520px;margin:0 auto;padding:16px}
+h1{font-size:1.3rem;margin:4px 0 12px}
+h2{font-size:1.05rem;margin:0 0 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
+.big{font-size:3rem;font-weight:700;line-height:1;letter-spacing:-1px}
+.mut{color:var(--mut);font-size:.9rem}
+.neg{color:var(--warn)}
+.bar{height:10px;background:var(--accbg);border-radius:6px;overflow:hidden;margin:12px 0}
+.bar i{display:block;height:100%;background:var(--acc)}
+.row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border:0}
+.f{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.f>*{flex:1 1 100px}
+input,select,button{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;min-width:0}
+button{background:var(--acc);color:var(--bg);border:0;font-weight:600;cursor:pointer}
+button.sec{background:var(--accbg);color:var(--acc)}
+button.x{background:none;color:var(--mut);padding:0 6px;flex:none}
+label{display:block;font-size:.85rem;color:var(--mut);margin-top:10px}
+label input,label select{width:100%;margin-top:4px;color:var(--ink)}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav button{flex:1;background:none;color:var(--mut);border-radius:0;padding:14px 4px}
+nav button.on{color:var(--acc);box-shadow:inset 0 3px 0 var(--acc)}
+.dn{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.dn button{flex:none;width:44px}
+svg{width:100%;height:auto;display:block}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<nav>
+  <button id="t-hoy" onclick="go('hoy')">Hoy</button>
+  <button id="t-peso" onclick="go('peso')">Peso</button>
+  <button id="t-perfil" onclick="go('perfil')">Perfil</button>
+</nav>
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import{getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,sendPasswordResetEmail,deleteUser}from"https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import{getFirestore,doc,getDoc,setDoc,deleteDoc}from"https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+// ===== PEGA AQUÍ LA CONFIGURACIÓN DE TU PROYECTO FIREBASE (paso 2 de la guía) =====
+const firebaseConfig={apiKey:"AIzaSyBw6DwV8l8RnMcVOtXOS2McE2XR09OkmFE",authDomain:"monitorizate-1.firebaseapp.com",projectId:"monitorizate-1",appId:"1:49379737300:web:26ddef9c38d59652208541"};
+// =================================================================================
+
+const fb=initializeApp(firebaseConfig),auth=getAuth(fb),db=getFirestore(fb);
+let user=null,mode='login',timer=null;
+const KEY='mibalance_v1';
+const FOODS=[["Arroz cocido (1 plato)",260],["Pasta cocida (1 plato)",320],["Pan (1 rebanada)",80],["Tostada con tomate y aceite",150],["Cereales con leche (1 bol)",250],["Pollo a la plancha (150 g)",250],["Huevo (1 unidad)",75],["Tortilla de patatas (1 ración)",250],["Pescado blanco (150 g)",150],["Salmón (150 g)",310],["Jamón serrano (30 g)",80],["Ensalada mixta (1 plato)",80],["Verduras cocidas (1 plato)",90],["Legumbres guisadas (1 plato)",350],["Sopa o caldo (1 plato)",80],["Patatas fritas (1 ración)",400],["Hamburguesa (1 unidad)",500],["Pizza (1 porción)",280],["Bocadillo de jamón",400],["Manzana",80],["Plátano",100],["Naranja",60],["Yogur natural",60],["Leche (1 vaso)",95],["Queso (30 g)",110],["Café con leche",60],["Aceite de oliva (1 cucharada)",120],["Frutos secos (30 g)",180],["Chocolate (25 g)",135],["Galletas (3 unidades)",120],["Cerveza (1 caña)",100],["Vino (1 copa)",120],["Refresco (1 lata)",140]];
+const EXS=[["Caminar suave",3.5],["Caminar rápido",4.5],["Correr",9],["Bicicleta",7],["Natación",6],["Pesas / gimnasio",5],["Baile",5],["Yoga",2.5],["Fútbol",7]];
+const ACT=[["Sedentario (poco ejercicio)",1.2],["Ligero (1-3 días/semana)",1.375],["Moderado (3-5 días/semana)",1.55],["Intenso (6-7 días/semana)",1.725]];
+const GOALS=[["Bajar peso (≈0,5 kg/semana)",500],["Bajar peso suave (≈0,25 kg/semana)",250],["Mantener peso",0]];
+
+let S={p:null,days:{},w:[]},view='hoy',date=ymd(new Date());
+
+function ymd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+const EMPTY=()=>({p:null,days:{},w:[]});
+function save(){clearTimeout(timer);timer=setTimeout(push,700)}
+async function push(){
+  timer=null;if(!user)return;
+  try{await setDoc(doc(db,'users',user.uid),{email:user.email,data:JSON.parse(JSON.stringify(S)),updated:new Date().toISOString()},{mergeFields:['email','data','updated']})}
+  catch(e){alert('No se pudo guardar en la nube. Revisa tu conexión.')}
+}
+addEventListener('pagehide',()=>{if(timer)push()});
+async function loadCloud(){
+  const s=await getDoc(doc(db,'users',user.uid));
+  if(s.exists()&&s.data().data){S=Object.assign(EMPTY(),s.data().data)}
+  else{
+    S=EMPTY();
+    try{const r=localStorage.getItem(KEY);if(r){S=Object.assign(S,JSON.parse(r));await push();localStorage.removeItem(KEY)}}catch(e){}
+  }
+}
+const ERR={'auth/invalid-email':'El correo no es válido.','auth/missing-password':'Escribe la contraseña.','auth/weak-password':'La contraseña debe tener al menos 6 caracteres.','auth/email-already-in-use':'Ya existe una cuenta con ese correo.','auth/invalid-credential':'Correo o contraseña incorrectos.','auth/too-many-requests':'Demasiados intentos. Espera un poco.','auth/network-request-failed':'Sin conexión.'};
+function msg(e){return ERR[e.code]||'Error: '+(e.code||e.message)}
+function switchMode(){mode=mode==='login'?'register':'login';render()}
+async function doAuth(){
+  const em=$('ae').value.trim(),pw=$('ap').value;
+  $('aerr').textContent='';
+  try{
+    if(mode==='register'){
+      if(!$('ac').checked){$('aerr').textContent='Debes aceptar el tratamiento de tus datos para registrarte.';return}
+      const c=await createUserWithEmailAndPassword(auth,em,pw);
+      await setDoc(doc(db,'users',c.user.uid),{email:em,consentAt:new Date().toISOString(),consentVersion:1},{merge:true});
+    }else await signInWithEmailAndPassword(auth,em,pw);
+  }catch(e){$('aerr').textContent=msg(e)}
+}
+async function resetPass(){
+  const em=$('ae').value.trim();
+  if(!em){$('aerr').textContent='Escribe tu correo arriba y vuelve a pulsar.';return}
+  try{await sendPasswordResetEmail(auth,em);$('aerr').textContent='Te hemos enviado un correo para restablecer la contraseña.'}
+  catch(e){$('aerr').textContent=msg(e)}
+}
+async function logout(){if(timer){clearTimeout(timer);await push()}await signOut(auth)}
+async function deleteAccount(){
+  if(!confirm('Se borrará tu cuenta y todos tus datos de forma definitiva. ¿Continuar?'))return;
+  try{await deleteDoc(doc(db,'users',user.uid));await deleteUser(user)}
+  catch(e){alert(e.code==='auth/requires-recent-login'?'Por seguridad, cierra sesión, vuelve a entrar y repite el borrado.':msg(e))}
+}
+function vAuth(){
+  const r=mode==='register';
+  return `<h1 style="margin-top:40px">Mi Balance</h1><div class="card"><h2>${r?'Crear cuenta':'Iniciar sesión'}</h2>
+  <label>Correo electrónico<input id="ae" type="email" autocomplete="email"></label>
+  <label>Contraseña<input id="ap" type="password" autocomplete="${r?'new-password':'current-password'}"></label>
+  ${r?`<label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink)"><input id="ac" type="checkbox" style="width:auto;margin-top:4px">Acepto que se guarden mis datos (peso, comidas y ejercicio) para usar la app y que el administrador pueda verlos.</label>`:''}
+  <p id="aerr" class="neg" role="alert"></p>
+  <div class="f"><button onclick="doAuth()">${r?'Registrarme':'Entrar'}</button></div>
+  <div class="f"><button class="sec" onclick="switchMode()">${r?'Ya tengo cuenta':'Crear una cuenta'}</button>${r?'':'<button class="sec" onclick="resetPass()">Olvidé mi contraseña</button>'}</div></div>`;
+}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function $(id){return document.getElementById(id)}
+function num(id){return parseFloat(String($(id).value).replace(',','.'))}
+function fmt(n){return Math.round(n).toLocaleString('es-ES')}
+
+function lastWeight(){const w=[...S.w].sort((a,b)=>a.d.localeCompare(b.d));return w.length?w[w.length-1].w:(S.p?S.p.peso:70)}
+function calc(){
+  const p=S.p;if(!p)return null;
+  const bmr=10*p.peso+6.25*p.altura-5*p.edad+(p.sexo==='h'?5:-161);
+  const tdee=bmr*p.act;
+  const min=p.sexo==='h'?1500:1200;
+  return{bmr,tdee,target:Math.max(tdee-p.deficit,min)};
+}
+function day(){return S.days[date]||(S.days[date]={f:[],e:[]})}
+
+function go(v){view=v;render()}
+function shift(n){const d=new Date(date+'T12:00:00');d.setDate(d.getDate()+n);date=ymd(d);render()}
+
+function addFood(){
+  const i=$('fs').value,q=num('fq')||1;
+  const f=FOODS[i];day().f.push({n:(q!==1?q+' × ':'')+f[0],k:f[1]*q});save();render();
+}
+function addCustom(){
+  const n=$('cn').value.trim(),k=num('ck');
+  if(!n||!(k>=0)){alert('Escribe el nombre y las calorías.');return}
+  day().f.push({n,k});save();render();
+}
+function addEx(){
+  const e=EXS[$('es').value],m=num('em');
+  if(!(m>0)){alert('Indica los minutos.');return}
+  day().e.push({n:e[0]+' ('+m+' min)',k:e[1]*lastWeight()*m/60});save();render();
+}
+function del(t,i){day()[t].splice(i,1);save();render()}
+
+function addW(){
+  const w=num('pw');if(!(w>20&&w<400)){alert('Introduce un peso válido en kg.');return}
+  S.w=S.w.filter(x=>x.d!==date);S.w.push({d:date,w});save();render();
+}
+function delW(d){S.w=S.w.filter(x=>x.d!==d);save();render()}
+
+function saveProfile(){
+  const p={sexo:$('ps').value,edad:num('pe'),altura:num('pa'),peso:num('pk'),act:parseFloat($('pc').value),deficit:parseFloat($('pg').value)};
+  if(!(p.edad>=14&&p.altura>=100&&p.peso>=30)){alert('Revisa edad (mín. 14), altura (cm) y peso (kg).');return}
+  S.p=p;
+  if(!S.w.length){S.w.push({d:ymd(new Date()),w:p.peso})}
+  save();go('hoy');
+}
+function exportData(){
+  const b=new Blob([JSON.stringify(S,null,1)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='mi-balance.json';a.click();
+}
+function resetAll(){if(confirm('¿Borrar todos tus datos de esta app? No se puede deshacer.')){S=EMPTY();push();go('perfil')}}
+
+function vHoy(){
+  const c=calc(),d=day();
+  const eaten=d.f.reduce((a,x)=>a+x.k,0),burn=d.e.reduce((a,x)=>a+x.k,0);
+  const nice=new Date(date+'T12:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+  let h=`<div class="dn"><button class="sec" onclick="shift(-1)" aria-label="Día anterior">‹</button><h1 style="margin:0;text-transform:capitalize">${nice}</h1><button class="sec" onclick="shift(1)" aria-label="Día siguiente">›</button></div>`;
+  if(c){
+    const left=c.target+burn-eaten,pct=Math.min(100,eaten/(c.target+burn)*100);
+    h+=`<div class="card"><div class="mut">${left>=0?'Te quedan':'Te has pasado'}</div><div class="big ${left<0?'neg':''}">${fmt(Math.abs(left))} <span class="mut" style="font-size:1rem;font-weight:400">kcal</span></div><div class="bar"><i style="width:${pct}%"></i></div>
+    <div class="row"><span>Objetivo diario</span><b>${fmt(c.target)}</b></div>
+    <div class="row"><span>Consumidas</span><b>${fmt(eaten)}</b></div>
+    <div class="row"><span>Quemadas con ejercicio</span><b>${fmt(burn)}</b></div></div>`;
+  }else{
+    h+=`<div class="card"><h2>Empieza por tu perfil</h2><p class="mut">Necesito tu peso, altura y edad para calcular cuántas calorías necesitas al día.</p><button onclick="go('perfil')">Completar perfil</button></div>`;
+  }
+  h+=`<div class="card"><h2>Comidas</h2>`;
+  h+=d.f.length?d.f.map((x,i)=>`<div class="row"><span>${esc(x.n)}</span><span>${fmt(x.k)} kcal <button class="x" onclick="del('f',${i})" aria-label="Quitar">✕</button></span></div>`).join(''):`<p class="mut">Aún no has añadido nada hoy.</p>`;
+  h+=`<div class="f"><select id="fs" style="flex:3 1 180px">${FOODS.map((f,i)=>`<option value="${i}">${esc(f[0])} · ${f[1]} kcal</option>`).join('')}</select><input id="fq" type="number" inputmode="decimal" step="0.5" min="0.5" value="1" aria-label="Raciones"><button onclick="addFood()">Añadir</button></div>
+  <div class="f"><input id="cn" placeholder="Otro alimento o plato" style="flex:3 1 160px"><input id="ck" type="number" inputmode="numeric" placeholder="kcal"><button class="sec" onclick="addCustom()">Añadir</button></div></div>`;
+  h+=`<div class="card"><h2>Ejercicio</h2>`;
+  h+=d.e.length?d.e.map((x,i)=>`<div class="row"><span>${esc(x.n)}</span><span>${fmt(x.k)} kcal <button class="x" onclick="del('e',${i})" aria-label="Quitar">✕</button></span></div>`).join(''):`<p class="mut">Sin ejercicio registrado.</p>`;
+  h+=`<div class="f"><select id="es" style="flex:3 1 160px">${EXS.map((e,i)=>`<option value="${i}">${esc(e[0])}</option>`).join('')}</select><input id="em" type="number" inputmode="numeric" placeholder="minutos"><button onclick="addEx()">Añadir</button></div>
+  <p class="mut">Estimación basada en tu último peso (${fmt(lastWeight())} kg).</p></div>`;
+  return h;
+}
+
+function chart(w){
+  if(w.length<2)return `<p class="mut">Registra al menos dos pesos para ver la gráfica.</p>`;
+  const W=320,H=160,P=28,ys=w.map(x=>x.w),mn=Math.min(...ys)-1,mx=Math.max(...ys)+1;
+  const X=i=>P+i*(W-2*P)/(w.length-1),Y=v=>H-P-(v-mn)/(mx-mn)*(H-2*P);
+  const pts=w.map((x,i)=>X(i)+','+Y(x.w)).join(' ');
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución del peso"><line x1="${P}" y1="${H-P}" x2="${W-P}" y2="${H-P}" stroke="var(--line)"/><polyline points="${pts}" fill="none" stroke="var(--acc)" stroke-width="2.5" stroke-linejoin="round"/>${w.map((x,i)=>`<circle cx="${X(i)}" cy="${Y(x.w)}" r="3.5" fill="var(--acc)"/>`).join('')}<text x="${P}" y="14" font-size="11" fill="var(--mut)">${mx.toFixed(0)} kg</text><text x="${P}" y="${H-8}" font-size="11" fill="var(--mut)">${mn.toFixed(0)} kg</text></svg>`;
+}
+function vPeso(){
+  const w=[...S.w].sort((a,b)=>a.d.localeCompare(b.d));
+  let h=`<h1>Tu peso</h1><div class="card">`;
+  if(w.length){
+    const diff=w[w.length-1].w-w[0].w;
+    h+=`<div class="mut">Cambio desde el inicio</div><div class="big ${diff>0?'neg':''}">${diff>0?'+':''}${diff.toFixed(1).replace('.',',')} <span class="mut" style="font-size:1rem;font-weight:400">kg</span></div>`;
+  }
+  h+=chart(w)+`</div><div class="card"><h2>Registrar peso (${date})</h2><div class="f"><input id="pw" type="number" inputmode="decimal" step="0.1" placeholder="kg"><button onclick="addW()">Guardar</button></div></div>`;
+  h+=`<div class="card"><h2>Historial</h2>`+(w.length?[...w].reverse().map(x=>`<div class="row"><span>${x.d}</span><span>${x.w.toFixed(1).replace('.',',')} kg <button class="x" onclick="delW('${x.d}')" aria-label="Quitar">✕</button></span></div>`).join(''):`<p class="mut">Sin registros todavía.</p>`)+`</div>`;
+  return h;
+}
+function vPerfil(){
+  const p=S.p||{sexo:'m',edad:'',altura:'',peso:'',act:1.375,deficit:500},c=calc();
+  const sel=(a,v)=>a.map(x=>`<option value="${x[1]}" ${x[1]==v?'selected':''}>${esc(x[0])}</option>`).join('');
+  let h=`<h1>Tu perfil</h1><div class="card">
+  <label>Sexo<select id="ps"><option value="m" ${p.sexo==='m'?'selected':''}>Mujer</option><option value="h" ${p.sexo==='h'?'selected':''}>Hombre</option></select></label>
+  <label>Edad (años)<input id="pe" type="number" inputmode="numeric" value="${p.edad}"></label>
+  <label>Altura (cm)<input id="pa" type="number" inputmode="numeric" value="${p.altura}"></label>
+  <label>Peso actual (kg)<input id="pk" type="number" inputmode="decimal" step="0.1" value="${p.peso}"></label>
+  <label>Actividad diaria<select id="pc">${sel(ACT,p.act)}</select></label>
+  <label>Objetivo<select id="pg">${sel(GOALS,p.deficit)}</select></label>
+  <div class="f"><button onclick="saveProfile()">Guardar perfil</button></div></div>`;
+  if(c)h+=`<div class="card"><h2>Tus cifras estimadas</h2><div class="row"><span>Metabolismo basal</span><b>${fmt(c.bmr)} kcal</b></div><div class="row"><span>Gasto diario total</span><b>${fmt(c.tdee)} kcal</b></div><div class="row"><span>Objetivo diario</span><b>${fmt(c.target)} kcal</b></div></div>`;
+  h+=`<div class="card"><h2>Tus datos</h2><p class="mut">Sesión iniciada como ${esc(user.email)}. Tus datos se guardan en tu cuenta.</p><div class="f"><button class="sec" onclick="exportData()">Exportar copia</button><button class="sec" onclick="logout()">Cerrar sesión</button></div><div class="f"><button class="sec" onclick="resetAll()">Vaciar mis datos</button><button class="sec" onclick="deleteAccount()">Eliminar mi cuenta</button></div></div>
+  <p class="mut">Las cifras son aproximadas y no sustituyen el consejo de un médico o nutricionista.</p>`;
+  return h;
+}
+
+function render(){
+  document.querySelector('nav').style.display=user?'flex':'none';
+  if(!user){$('app').innerHTML=vAuth();return}
+  $('app').innerHTML=view==='hoy'?vHoy():view==='peso'?vPeso():vPerfil();
+  ['hoy','peso','perfil'].forEach(v=>$('t-'+v).className=v===view?'on':'');
+  window.scrollTo(0,0);
+}
+Object.assign(window,{go,shift,addFood,addCustom,addEx,del,addW,delW,saveProfile,exportData,resetAll,doAuth,switchMode,resetPass,logout,deleteAccount});
+$('app').innerHTML='<p class="mut">Cargando…</p>';
+document.querySelector('nav').style.display='none';
+onAuthStateChanged(auth,async u=>{
+  user=u;
+  if(u){
+    try{await loadCloud()}
+    catch(e){alert('No se pudieron cargar tus datos de la nube. Revisa la configuración de Firebase y las reglas.');await signOut(auth);return}
+    view=S.p?'hoy':'perfil';date=ymd(new Date());
+  }else S=EMPTY();
+  render();
+});
+</script>
+</body>
+</html>
